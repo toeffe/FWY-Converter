@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inbound converter</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <h1>Inbound converter</h1>
+      </div>
+      <div class="top-actions">
+        <label class="source">
+          Source
+          <select id="sourceSelect"></select>
+        </label>
+        <button type="button" id="downloadBtn" class="btn primary" disabled>
+          Download xlsx
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section id="dropzone" class="dropzone" tabindex="0">
+        <input id="fileInput" type="file" accept="application/pdf,.pdf" hidden />
+        <p class="drop-title">Drop PDF here or click to choose</p>
+        <p id="dropHint" class="drop-hint"></p>
+      </section>
+
+      <p id="status" class="status" hidden></p>
+
+      <section id="summary" class="summary" hidden></section>
+
+      <section class="fields">
+        <label>
+          Order Reference
+          <input id="orderRef" type="text" placeholder="Order Reference" required />
+        </label>
+        <label>
+          Supplier ID
+          <input id="supplierId" type="text" required />
+        </label>
+        <label>
+          Supplier Reference
+          <input id="supplierReference" type="text" required />
+        </label>
+        <label>
+          Confirmation E-mail Address
+          <input id="confirmEmail" type="email" placeholder="Enter Confirmation E-mail Address" autocomplete="email" required />
+        </label>
+        <label>
+          Warehouse E-mail Address
+          <input id="warehouseEmail" type="email" placeholder="Enter Warehouse E-mail Address" autocomplete="email" required />
+        </label>
+        <label>
+          Delivery date
+          <input id="deliveryDate" type="date" required />
+        </label>
+      </section>
+
+      <section id="itemsSection" hidden>
+        <h2>BBD per item</h2>
+        <p class="hint">Sets every pallet of that item unless a pallet is overridden.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Text</th>
+                <th>Pallets</th>
+                <th>BBD</th>
+              </tr>
+            </thead>
+            <tbody id="itemBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="palletsSection" hidden>
+        <h2>Pallets / lots</h2>
+        <p class="hint">Edit a BBD to lock that pallet. Clear restores the item BBD.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Lot</th>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>BBD</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="palletBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

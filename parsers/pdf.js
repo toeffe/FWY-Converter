@@ -1,0 +1,49 @@
+export function clusterTextItems(items, yTolerance = 3) {
+  const usable = items.filter((item) => item.str && item.str.trim());
+  const sorted = [...usable].sort((a, b) => {
+    const yDiff = b.transform[5] - a.transform[5];
+    if (Math.abs(yDiff) > yTolerance) return yDiff;
+    return a.transform[4] - b.transform[4];
+  });
+
+  const lines = [];
+  for (const item of sorted) {
+    const y = item.transform[5];
+    const last = lines[lines.length - 1];
+    if (!last || Math.abs(last.y - y) > yTolerance) {
+      lines.push({ y, parts: [{ x: item.transform[4], str: item.str }] });
+    } else {
+      last.parts.push({ x: item.transform[4], str: item.str });
+    }
+  }
+
+  return lines.map((line) =>
+    line.parts
+      .sort((a, b) => a.x - b.x)
+      .map((part) => part.str)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+export async function extractPdfLines(arrayBuffer) {
+  const pdfjsLib = window.pdfjsLib;
+  if (!pdfjsLib) {
+    throw new Error("pdf.js failed to load.");
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const lines = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    lines.push(...clusterTextItems(content.items));
+  }
+
+  return lines;
+}
