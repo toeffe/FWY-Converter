@@ -48,6 +48,13 @@ function setDate(row, col, value) {
   cell.numFmt = "mm-dd-yy";
 }
 
+function safeFilePart(value) {
+  const cleaned = String(value || "")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim();
+  return cleaned || "inbound";
+}
+
 function templateBuffer() {
   const binary = atob(TEMPLATE_BASE64.replace(/\s+/g, ""));
   const bytes = new Uint8Array(binary.length);
@@ -82,7 +89,7 @@ export async function buildInboundWorkbook(state) {
     setDate(row, COL.deliveryTo, state.deliveryDate);
     setText(row, COL.item, pallet.itemNr);
     setText(row, COL.lot, pallet.pallNo);
-    setText(row, COL.bbd, pallet.bbd);
+    setDate(row, COL.bbd, pallet.bbd);
     setText(row, COL.stockType, state.stockType);
     setText(row, COL.transporterLanguage, STATIC_LANGUAGE);
     setText(row, COL.confirmationEmail, state.confirmationEmail);
@@ -101,7 +108,7 @@ export async function downloadInboundXlsx(state) {
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
-  const name = `${state.orderRef || "inbound"}_inbound.xlsx`;
+  const name = `${safeFilePart(state.orderRef)}_inbound.xlsx`;
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

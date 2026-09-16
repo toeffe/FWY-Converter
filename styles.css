@@ -244,8 +244,21 @@ input.bbd {
   font: inherit;
 }
 
-input.bbd.invalid {
+input.bbd.invalid,
+input.qty-input.invalid,
+input.item-input.invalid,
+input.lot-input.invalid {
   border-color: #c24a1a;
+}
+
+input.qty-input,
+input.item-input,
+input.lot-input {
+  width: 7rem;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
 }
 
 .btn {

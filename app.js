@@ -32,9 +32,25 @@ function todayIso() {
   return `${year}-${month}-${day}`;
 }
 
+function readStoredSource() {
+  try {
+    return localStorage.getItem(SOURCE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSource(id) {
+  try {
+    localStorage.setItem(SOURCE_KEY, id);
+  } catch {
+    // Private mode or blocked storage must not kill the page.
+  }
+}
+
 els.deliveryDate.value = todayIso();
 
-let activeProfile = getProfile(localStorage.getItem(SOURCE_KEY));
+let activeProfile = getProfile(readStoredSource());
 let state = null;
 
 function applyProfileDefaults() {
@@ -100,6 +116,24 @@ function isFilledText(value) {
   return Boolean(String(value || "").trim());
 }
 
+function isPositiveQty(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0;
+}
+
+function caseTotal() {
+  if (!state?.pallets.length) return 0;
+  return state.pallets.reduce((sum, pallet) => sum + (Number(pallet.qty) || 0), 0);
+}
+
+function hasQtyMismatch() {
+  return state?.header?.totalQtyCases != null && state.header.totalQtyCases !== caseTotal();
+}
+
+function extraOrderCount() {
+  return state?.header?.extraOrders?.length || 0;
+}
+
 function missingFields() {
   const missing = [];
   if (!isFilledText(els.orderRef.value)) missing.push("order reference");
@@ -109,6 +143,12 @@ function missingFields() {
   if (!isFilledEmail(els.warehouseEmail.value)) missing.push("warehouse email");
   if (!els.deliveryDate.value) missing.push("delivery date");
   if (!state?.pallets.length) return missing;
+  const emptyItem = state.pallets.filter((pallet) => !isFilledText(pallet.itemNr)).length;
+  if (emptyItem) missing.push(`${emptyItem} item`);
+  const emptyLot = state.pallets.filter((pallet) => !isFilledText(pallet.pallNo)).length;
+  if (emptyLot) missing.push(`${emptyLot} lot`);
+  const badQty = state.pallets.filter((pallet) => !isPositiveQty(pallet.qty)).length;
+  if (badQty) missing.push(`${badQty} qty`);
   const emptyBbd = state.pallets.filter((pallet) => !isCompleteBbd(pallet.bbd)).length;
   if (emptyBbd) missing.push(`${emptyBbd} BBD`);
   return missing;
@@ -141,6 +181,14 @@ function uniqueItems(pallets) {
   return [...map.values()];
 }
 
+function refreshItems() {
+  const bbdByItem = new Map(state.items.map((item) => [item.itemNr, item.bbd]));
+  state.items = uniqueItems(state.pallets).map((item) => ({
+    ...item,
+    bbd: bbdByItem.get(item.itemNr) || "",
+  }));
+}
+
 function applyItemBbd(itemNr, bbd) {
   const item = state.items.find((entry) => entry.itemNr === itemNr);
   if (item) item.bbd = bbd;
@@ -162,15 +210,19 @@ function render() {
   }
 
   const { pallets, items } = state;
-  const totalCases = pallets.reduce((sum, pallet) => sum + (Number(pallet.qty) || 0), 0);
-  const qtyMismatch =
-    state.header?.totalQtyCases != null && state.header.totalQtyCases !== totalCases;
+  const totalCases = caseTotal();
+  const qtyMismatch = hasQtyMismatch();
   const vendors = [...new Set(pallets.map((pallet) => pallet.vendor))];
   const missing = missingFields();
+  const extras = extraOrderCount();
+  const orderLabel = els.orderRef.value.trim() || state.header?.orderRef || "—";
 
   els.summary.hidden = false;
   els.summary.innerHTML = [
-    chip("Order", els.orderRef.value.trim() || "—"),
+    chip("Order", orderLabel),
+    extras
+      ? chip(`Using order ${orderLabel}; ignored ${extras} extra`, null, true)
+      : "",
     chip("Supplier", vendors.join(", ") || "—"),
     chip("Supplier ID", els.supplierId.value.trim() || "—"),
     chip("Supplier ref", els.supplierReference.value.trim() || "—"),
@@ -211,10 +263,14 @@ function render() {
     .map(
       (pallet, index) => `
       <tr data-index="${index}">
-        <td class="num">${escapeHtml(pallet.pallNo)}</td>
-        <td class="num">${escapeHtml(pallet.itemNr)}</td>
         <td class="num">
-          <input class="qty-input" type="number" min="0" step="1" inputmode="numeric" value="${escapeAttr(String(pallet.qty))}" />
+          <input class="lot-input" inputmode="numeric" value="${escapeAttr(pallet.pallNo)}" />
+        </td>
+        <td class="num">
+          <input class="item-input" inputmode="numeric" value="${escapeAttr(pallet.itemNr)}" />
+        </td>
+        <td class="num">
+          <input class="qty-input" inputmode="numeric" value="${escapeAttr(String(pallet.qty))}" />
         </td>
         <td>
           <input class="bbd lot-bbd" inputmode="numeric" placeholder="DD-MM-YYYY" maxlength="10" value="${escapeAttr(pallet.bbd)}" />
@@ -249,6 +305,15 @@ function markInvalidInputs() {
   document.querySelectorAll("input.bbd").forEach((input) => {
     input.classList.toggle("invalid", loaded && !isCompleteBbd(input.value.trim()));
   });
+  document.querySelectorAll("input.item-input").forEach((input) => {
+    input.classList.toggle("invalid", loaded && !isFilledText(input.value));
+  });
+  document.querySelectorAll("input.lot-input").forEach((input) => {
+    input.classList.toggle("invalid", loaded && !isFilledText(input.value));
+  });
+  document.querySelectorAll("input.qty-input").forEach((input) => {
+    input.classList.toggle("invalid", loaded && !isPositiveQty(input.value));
+  });
 }
 
 function escapeHtml(value) {
@@ -263,7 +328,38 @@ function escapeAttr(value) {
   return escapeHtml(value);
 }
 
+function isPdfFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  if (type === "application/pdf" || type === "application/x-pdf") return true;
+  if (type && type !== "application/octet-stream") return false;
+  return /\.pdf$/i.test(file?.name || "");
+}
+
+function mapLoadError(error) {
+  const name = String(error?.name || "");
+  const message = String(error?.message || error || "");
+  if (name === "PasswordException" || /password/i.test(message)) {
+    return "This PDF is password-protected.";
+  }
+  if (
+    name === "InvalidPDFException" ||
+    name === "UnexpectedResponseException" ||
+    /invalid pdf/i.test(message) ||
+    /not a readable pdf/i.test(message)
+  ) {
+    return "Not a readable PDF.";
+  }
+  return message || "Could not read this PDF.";
+}
+
 async function loadPdf(file) {
+  if (!isPdfFile(file)) {
+    state = null;
+    render();
+    showStatus("Not a PDF.");
+    return;
+  }
+
   showStatus("Reading PDF…");
   els.downloadBtn.disabled = true;
   try {
@@ -282,25 +378,27 @@ async function loadPdf(file) {
         ...pallet,
         bbd: "",
         bbdOverridden: false,
-        qty: pallet.crtPerPall,
+        qty: pallet.crtPerPall ?? 0,
       })),
     };
 
     els.orderRef.value = parsed.header.orderRef || "";
 
+    const extraCount = parsed.header.extraOrders?.length || 0;
+    const extraOrdersNote = extraCount ? ` Using first order; ignored ${extraCount} extra.` : "";
     const extra =
       parsed.qtyMismatch && parsed.header.totalQtyCases != null
         ? ` Case sum ${parsed.totalCases} does not match PDF total ${parsed.header.totalQtyCases}.`
         : "";
     showStatus(
-      `Loaded ${parsed.pallets.length} pallets, order ${parsed.header.orderRef || "—"}.${extra}`,
-      !parsed.qtyMismatch
+      `Loaded ${parsed.pallets.length} pallets, order ${parsed.header.orderRef || "—"}.${extraOrdersNote}${extra}`,
+      !parsed.qtyMismatch && extraCount === 0
     );
     render();
   } catch (error) {
     state = null;
     render();
-    showStatus(error.message || String(error));
+    showStatus(mapLoadError(error));
   }
 }
 
@@ -362,10 +460,37 @@ els.palletBody.addEventListener("input", (event) => {
   const input = event.target.closest(".qty-input");
   if (!input || !state) return;
   const index = Number(input.closest("tr").dataset.index);
-  const value = Math.max(0, Math.trunc(Number(input.value) || 0));
+  const digits = String(input.value || "").replace(/\D/g, "");
+  const value = digits === "" ? 0 : Math.max(0, Math.trunc(Number(digits)));
   state.pallets[index].qty = value;
   renderKeepFocus(input, () =>
     els.palletBody.querySelector(`tr[data-index="${index}"] .qty-input`)
+  );
+});
+
+els.palletBody.addEventListener("input", (event) => {
+  const input = event.target.closest(".lot-input");
+  if (!input || !state) return;
+  const index = Number(input.closest("tr").dataset.index);
+  state.pallets[index].pallNo = input.value;
+  renderKeepFocus(input, () =>
+    els.palletBody.querySelector(`tr[data-index="${index}"] .lot-input`)
+  );
+});
+
+els.palletBody.addEventListener("input", (event) => {
+  const input = event.target.closest(".item-input");
+  if (!input || !state) return;
+  const index = Number(input.closest("tr").dataset.index);
+  const pallet = state.pallets[index];
+  pallet.itemNr = input.value;
+  refreshItems();
+  if (!pallet.bbdOverridden) {
+    const item = state.items.find((entry) => entry.itemNr === pallet.itemNr);
+    pallet.bbd = item?.bbd || pallet.bbd;
+  }
+  renderKeepFocus(input, () =>
+    els.palletBody.querySelector(`tr[data-index="${index}"] .item-input`)
   );
 });
 
@@ -398,6 +523,10 @@ els.downloadBtn.addEventListener("click", async () => {
     state.warehouseEmail = els.warehouseEmail.value.trim();
     state.deliveryDate = els.deliveryDate.value;
     state.stockType = activeProfile.defaults.stockType || "";
+    state.pallets.forEach((pallet) => {
+      pallet.itemNr = String(pallet.itemNr || "").trim();
+      pallet.pallNo = String(pallet.pallNo || "").trim();
+    });
     const name = await downloadInboundXlsx(state);
     showStatus(`Downloaded ${name}.`, true);
   } catch (error) {
@@ -424,19 +553,29 @@ els.downloadBtn.addEventListener("click", async () => {
 });
 
 function renderKeepFocus(input, nextInput) {
-  const start = input.selectionStart;
-  const end = input.selectionEnd;
+  let start = null;
+  let end = null;
+  try {
+    start = input.selectionStart;
+    end = input.selectionEnd;
+  } catch {
+    start = null;
+  }
   render();
   const restored = nextInput();
-  if (restored) {
-    restored.focus();
+  if (!restored) return;
+  restored.focus();
+  if (typeof start !== "number" || typeof restored.setSelectionRange !== "function") return;
+  try {
     restored.setSelectionRange(start, end);
+  } catch {
+    // Number-like inputs in some browsers still reject selection APIs.
   }
 }
 
 els.sourceSelect.addEventListener("change", () => {
   activeProfile = getProfile(els.sourceSelect.value);
-  localStorage.setItem(SOURCE_KEY, activeProfile.id);
+  writeStoredSource(activeProfile.id);
   applyProfileDefaults();
   clearLoadedPdf();
 });

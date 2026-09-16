@@ -10,7 +10,7 @@
  * parsePdf must resolve to:
  *
  * {
- *   header: { orderRef: string },
+ *   header: { orderRef: string, extraOrders?: string[], totalQtyCases?: number | null },
  *   pallets: [{
  *     vendor: string,      // Supplier Name
  *     itemNr: string,      // Item
