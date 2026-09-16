@@ -1,7 +1,7 @@
 import { extractPdfLines } from "./pdf.js";
 
 const LINE_RE =
-  /^(.+?)\s+(\d{2}-\d{2}-\d{4})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/;
+  /^(.+?)\s+(\d{2}-\d{2}-\d{4})\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+|None)\s+(\d+|None)\s+(.*)$/;
 
 const SKIP_RE =
   /^(vendor\b|arrival notice|transporter:|total qty|fwy order|^\d+\s*\/\s*\d+$|--\s*\d+\s+of\s+\d+\s*--)/i;
@@ -55,8 +55,8 @@ export function parseFwyArrivalNoticeLines(lines) {
       pcsPerCrt: Number(row[4]),
       pallNo: row[5],
       crtPerPall: Number(row[6]),
-      ean: row[7],
-      caseEan: row[8],
+      ean: row[7] === "None" ? "" : row[7],
+      caseEan: row[8] === "None" ? "" : row[8],
       text: row[9].trim(),
     });
   }

@@ -5,6 +5,7 @@ const COL = {
   supplierId: 2,
   supplierReference: 3,
   supplierName: 4,
+  supplierLanguage: 11,
   deliveryFrom: 12,
   deliveryTo: 13,
   item: 14,
@@ -12,9 +13,12 @@ const COL = {
   bbd: 16,
   stockType: 17,
   quantity: 19,
+  transporterLanguage: 28,
   confirmationEmail: 29,
   warehouseEmail: 30,
 };
+
+const STATIC_LANGUAGE = "ENG";
 
 function parseDateValue(value) {
   const raw = String(value || "").trim();
@@ -72,16 +76,18 @@ export async function buildInboundWorkbook(state) {
     setText(row, COL.orderRef, state.orderRef);
     setText(row, COL.supplierId, state.supplierId);
     setText(row, COL.supplierReference, state.supplierReference);
-    setText(row, COL.supplierName, pallet.vendor);
+    setText(row, COL.supplierName, "");
+    setText(row, COL.supplierLanguage, STATIC_LANGUAGE);
     setDate(row, COL.deliveryFrom, state.deliveryDate);
     setDate(row, COL.deliveryTo, state.deliveryDate);
     setText(row, COL.item, pallet.itemNr);
     setText(row, COL.lot, pallet.pallNo);
     setText(row, COL.bbd, pallet.bbd);
     setText(row, COL.stockType, state.stockType);
+    setText(row, COL.transporterLanguage, STATIC_LANGUAGE);
     setText(row, COL.confirmationEmail, state.confirmationEmail);
     setText(row, COL.warehouseEmail, state.warehouseEmail);
-    row.getCell(COL.quantity).value = pallet.crtPerPall;
+    row.getCell(COL.quantity).value = pallet.qty ?? pallet.crtPerPall;
     row.getCell(COL.quantity).numFmt = "0";
     row.commit();
   });

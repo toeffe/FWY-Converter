@@ -161,7 +161,10 @@ function render() {
     return;
   }
 
-  const { pallets, totalCases, qtyMismatch, items } = state;
+  const { pallets, items } = state;
+  const totalCases = pallets.reduce((sum, pallet) => sum + (Number(pallet.qty) || 0), 0);
+  const qtyMismatch =
+    state.header?.totalQtyCases != null && state.header.totalQtyCases !== totalCases;
   const vendors = [...new Set(pallets.map((pallet) => pallet.vendor))];
   const missing = missingFields();
 
@@ -210,7 +213,9 @@ function render() {
       <tr data-index="${index}">
         <td class="num">${escapeHtml(pallet.pallNo)}</td>
         <td class="num">${escapeHtml(pallet.itemNr)}</td>
-        <td class="num">${pallet.crtPerPall}</td>
+        <td class="num">
+          <input class="qty-input" type="number" min="0" step="1" inputmode="numeric" value="${escapeAttr(String(pallet.qty))}" />
+        </td>
         <td>
           <input class="bbd lot-bbd" inputmode="numeric" placeholder="DD-MM-YYYY" maxlength="10" value="${escapeAttr(pallet.bbd)}" />
           ${pallet.bbdOverridden ? '<span class="badge">override</span>' : ""}
@@ -277,6 +282,7 @@ async function loadPdf(file) {
         ...pallet,
         bbd: "",
         bbdOverridden: false,
+        qty: pallet.crtPerPall,
       })),
     };
 
@@ -349,6 +355,17 @@ els.palletBody.addEventListener("input", (event) => {
   state.pallets[index].bbdOverridden = true;
   renderKeepFocus(input, () =>
     els.palletBody.querySelector(`tr[data-index="${index}"] .lot-bbd`)
+  );
+});
+
+els.palletBody.addEventListener("input", (event) => {
+  const input = event.target.closest(".qty-input");
+  if (!input || !state) return;
+  const index = Number(input.closest("tr").dataset.index);
+  const value = Math.max(0, Math.trunc(Number(input.value) || 0));
+  state.pallets[index].qty = value;
+  renderKeepFocus(input, () =>
+    els.palletBody.querySelector(`tr[data-index="${index}"] .qty-input`)
   );
 });
 
