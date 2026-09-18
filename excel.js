@@ -89,7 +89,7 @@ export async function buildInboundWorkbook(state) {
     setDate(row, COL.deliveryTo, state.deliveryDate);
     setText(row, COL.item, pallet.itemNr);
     setText(row, COL.lot, pallet.pallNo);
-    setDate(row, COL.bbd, pallet.bbd);
+    setText(row, COL.bbd, pallet.bbd);
     setText(row, COL.stockType, state.stockType);
     setText(row, COL.transporterLanguage, STATIC_LANGUAGE);
     setText(row, COL.confirmationEmail, state.confirmationEmail);
