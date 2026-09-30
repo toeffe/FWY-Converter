@@ -2,6 +2,8 @@ import { downloadInboundXlsx } from "./excel.js";
 import { getProfile, profiles } from "./profiles.js";
 
 const SOURCE_KEY = "inbound-source";
+const CONFIRM_EMAIL_KEY = "inbound-confirm-email";
+const WAREHOUSE_EMAIL_KEY = "inbound-warehouse-email";
 const BBD_RE = /^(\d{2})-(\d{2})-(\d{4})$/;
 
 const els = {
@@ -24,12 +26,12 @@ const els = {
   deliveryDate: document.getElementById("deliveryDate"),
 };
 
-function todayIso() {
+function todayDmy() {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const year = String(now.getFullYear());
+  return `${day}-${month}-${year}`;
 }
 
 function readStoredSource() {
@@ -48,14 +50,30 @@ function writeStoredSource(id) {
   }
 }
 
-els.deliveryDate.value = todayIso();
+function readStoredEmail(key) {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredEmail(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private mode or blocked storage must not kill the page.
+  }
+}
+
+els.deliveryDate.value = todayDmy();
+els.confirmEmail.value = readStoredEmail(CONFIRM_EMAIL_KEY);
+els.warehouseEmail.value = readStoredEmail(WAREHOUSE_EMAIL_KEY);
 
 let activeProfile = getProfile(readStoredSource());
 let state = null;
 
 function applyProfileDefaults() {
-  els.supplierId.value = activeProfile.defaults.supplierId || "";
-  els.supplierReference.value = activeProfile.defaults.supplierReference || "";
   els.dropHint.textContent = activeProfile.dropHint || "";
 }
 
@@ -82,8 +100,13 @@ function showStatus(message, ok = false) {
   els.status.classList.toggle("ok", ok);
 }
 
-function formatBbd(raw) {
-  const digits = String(raw || "").replace(/\D/g, "").slice(0, 8);
+function formatDmy(raw) {
+  let digits = String(raw || "").replace(/\D/g, "");
+  if (digits.length === 6) {
+    digits = `${digits.slice(0, 4)}20${digits.slice(4)}`;
+  } else {
+    digits = digits.slice(0, 8);
+  }
   if (digits.length <= 2) return digits;
   if (digits.length <= 4) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
   return `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
@@ -141,7 +164,7 @@ function missingFields() {
   if (!isFilledText(els.supplierReference.value)) missing.push("supplier reference");
   if (!isFilledEmail(els.confirmEmail.value)) missing.push("confirmation email");
   if (!isFilledEmail(els.warehouseEmail.value)) missing.push("warehouse email");
-  if (!els.deliveryDate.value) missing.push("delivery date");
+  if (!isCompleteBbd(els.deliveryDate.value)) missing.push("delivery date");
   if (!state?.pallets.length) return missing;
   const emptyItem = state.pallets.filter((pallet) => !isFilledText(pallet.itemNr)).length;
   if (emptyItem) missing.push(`${emptyItem} item`);
@@ -253,7 +276,7 @@ function render() {
         <td>${escapeHtml(item.text)}</td>
         <td class="num">${item.count}</td>
         <td>
-          <input class="bbd item-bbd" inputmode="numeric" placeholder="DD-MM-YYYY" maxlength="10" value="${escapeAttr(item.bbd)}" />
+          <input class="bbd item-bbd" inputmode="numeric" placeholder="DDMMYY" maxlength="10" value="${escapeAttr(item.bbd)}" />
         </td>
       </tr>`
     )
@@ -273,7 +296,7 @@ function render() {
           <input class="qty-input" inputmode="numeric" value="${escapeAttr(String(pallet.qty))}" />
         </td>
         <td>
-          <input class="bbd lot-bbd" inputmode="numeric" placeholder="DD-MM-YYYY" maxlength="10" value="${escapeAttr(pallet.bbd)}" />
+          <input class="bbd lot-bbd" inputmode="numeric" placeholder="DDMMYY" maxlength="10" value="${escapeAttr(pallet.bbd)}" />
           ${pallet.bbdOverridden ? '<span class="badge">override</span>' : ""}
         </td>
         <td>
@@ -301,7 +324,7 @@ function markInvalidInputs() {
   );
   els.confirmEmail.classList.toggle("invalid", loaded && !isFilledEmail(els.confirmEmail.value));
   els.warehouseEmail.classList.toggle("invalid", loaded && !isFilledEmail(els.warehouseEmail.value));
-  els.deliveryDate.classList.toggle("invalid", loaded && !els.deliveryDate.value);
+  els.deliveryDate.classList.toggle("invalid", loaded && !isCompleteBbd(els.deliveryDate.value));
   document.querySelectorAll("input.bbd").forEach((input) => {
     input.classList.toggle("invalid", loaded && !isCompleteBbd(input.value.trim()));
   });
@@ -435,7 +458,7 @@ els.itemBody.addEventListener("input", (event) => {
   const input = event.target.closest(".item-bbd");
   if (!input || !state) return;
   const itemNr = input.closest("tr").dataset.item;
-  const formatted = formatBbd(input.value);
+  const formatted = formatDmy(input.value);
   if (formatted !== input.value) input.value = formatted;
   applyItemBbd(itemNr, formatted);
   renderKeepFocus(input, () =>
@@ -447,7 +470,7 @@ els.palletBody.addEventListener("input", (event) => {
   const input = event.target.closest(".lot-bbd");
   if (!input || !state) return;
   const index = Number(input.closest("tr").dataset.index);
-  const formatted = formatBbd(input.value);
+  const formatted = formatDmy(input.value);
   if (formatted !== input.value) input.value = formatted;
   state.pallets[index].bbd = formatted;
   state.pallets[index].bbdOverridden = true;
@@ -545,6 +568,12 @@ els.downloadBtn.addEventListener("click", async () => {
   els.deliveryDate,
 ].forEach((input) => {
   input.addEventListener("input", () => {
+    if (input === els.deliveryDate) {
+      const formatted = formatDmy(input.value);
+      if (formatted !== input.value) input.value = formatted;
+    }
+    if (input === els.confirmEmail) writeStoredEmail(CONFIRM_EMAIL_KEY, input.value.trim());
+    if (input === els.warehouseEmail) writeStoredEmail(WAREHOUSE_EMAIL_KEY, input.value.trim());
     if (!state) return;
     updateDownloadState();
     markInvalidInputs();

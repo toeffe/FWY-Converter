@@ -7,8 +7,6 @@ export const profiles = [
     name: "FWY",
     dropHint: "FWY arrival notice — pallets",
     defaults: {
-      supplierId: "SEAW83300",
-      supplierReference: "SEAW260910",
       stockType: "FFA",
     },
     parsePdf: parseFwyArrivalNotice,
